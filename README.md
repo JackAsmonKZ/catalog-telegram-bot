@@ -36,26 +36,6 @@ ADMIN_ID=mongodb://localhost:27017/mybot
 - Локальный запуск (long polling):
   npm run start
 
-- Запуск в режиме разработки (с перезагрузкой):
-  npm run dev
-
-(Добавь скрипты в package.json, если их нет)
-Пример:
-{
-  "name": "tg-catalog-bot",
-  "version": "1.0.0",
-  "type": "module",
-  "dependencies": {
-    "dotenv": "^17.2.3",
-    "fs-extra": "^11.1.1",
-    "telegraf": "^4.12.2"
-  },
-  "scripts": {
-    "start": "node index.js"
-  }
-}
-
-
 ## Контакты / Автор
 
 JackAsmonKZ — владелец репозитория  
