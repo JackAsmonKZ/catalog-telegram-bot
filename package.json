@@ -1,0 +1,13 @@
+{
+  "name": "tg-catalog-bot",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "dotenv": "^17.2.3",
+    "fs-extra": "^11.1.1",
+    "telegraf": "^4.12.2"
+  },
+  "scripts": {
+    "start": "node index.js"
+  }
+}
