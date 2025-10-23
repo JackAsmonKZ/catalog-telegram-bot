@@ -3,6 +3,7 @@ import {
   buildCatalogKeyboard,
   getProductKeyboard,
   buildMainKeyboard,
+  buildCategoriesKeyboard,
 } from "./keyboards.js";
 import {
   getCart,
@@ -49,11 +50,10 @@ export function registerCatalogHandlers(bot, state, dbPath, ADMIN_ID) {
   });
 
   bot.action(/^catalog_back_(\d+)$/, async (ctx) => {
-    const page = Number(ctx.match[1]);
-    // Всегда создаем новое сообщение каталога для сохранения истории
+    // Теперь всегда показываем категории вместо полного каталога
     await ctx.reply(
-      "Каталог товаров:",
-      buildCatalogKeyboard(state.products, page)
+      "Выберите категорию:",
+      buildCategoriesKeyboard(state.categories, state.products, 1)
     );
     await ctx.answerCbQuery();
   });
@@ -67,7 +67,18 @@ export function registerCatalogHandlers(bot, state, dbPath, ADMIN_ID) {
       return;
     }
     const cart = getCart(userCarts, ctx.from.id);
-    const kb = getProductKeyboard(prod.id, page, cart, "catalog");
+
+    // Определяем categoryId для правильной навигации
+    let categoryId = prod.category;
+    // Если категории нет или она не существует - используем "uncategorized"
+    if (
+      !categoryId ||
+      !state.categories.find((c) => String(c.id) === String(categoryId))
+    ) {
+      categoryId = "uncategorized";
+    }
+
+    const kb = getProductKeyboard(prod.id, page, cart, "catalog", categoryId);
     await sendProductWithPhoto(ctx, prod, kb, true);
     await ctx.answerCbQuery();
   });
@@ -206,8 +217,7 @@ export function registerCatalogHandlers(bot, state, dbPath, ADMIN_ID) {
       await ctx.reply(
         `По запросу "${ctx.message.text}" ничего не найдено.`,
         Markup.inlineKeyboard([
-          [Markup.button.callback("⬅️ Вернуться в каталог", "catalog_back_1")],
-          [Markup.button.callback("🔍 Новый поиск", "search")],
+          [Markup.button.callback("⬅️ Назад к категориям", "show_categories")],
         ])
       );
       return;
@@ -221,9 +231,8 @@ export function registerCatalogHandlers(bot, state, dbPath, ADMIN_ID) {
       ),
     ]);
     keyboard.push([
-      Markup.button.callback("⬅️ Вернуться в каталог", "catalog_back_1"),
+      Markup.button.callback("⬅️ Назад к категориям", "show_categories"),
     ]);
-    keyboard.push([Markup.button.callback("🔍 Новый поиск", "search")]);
     await ctx.reply(textOut, Markup.inlineKeyboard(keyboard));
   });
 }

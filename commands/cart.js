@@ -1,109 +1,155 @@
 import { Markup } from "telegraf";
-import { getCart } from "./utils.js";
+import { getCart, parseCartKey, getPriceByVolume } from "./utils.js";
 import { getProductKeyboard, buildMainKeyboard } from "./keyboards.js";
 import { showCart } from "./catalogHandlers.js";
 
 export function registerCartHandlers(bot, state, userCarts, ADMIN_ID) {
-  bot.action(/^add_to_cart_(.+)_(\d+)_(catalog|search)$/, async (ctx) => {
-    const productId = ctx.match[1];
-    const page = Number(ctx.match[2]);
-    const source = ctx.match[3];
-    const cart = getCart(userCarts, ctx.from.id);
-    cart.set(productId, 1);
-    const prod = state.products.find((p) => String(p.id) === String(productId));
-    if (!prod) {
-      await ctx.answerCbQuery("Товар не найден", { show_alert: true });
-      return;
-    }
-    const kb = getProductKeyboard(prod.id, page, cart, source);
-    // Обновляем только клавиатуру (не удаляем сообщение)
-    try {
-      if (prod.photo && ctx.callbackQuery?.message?.photo) {
-        // Если это сообщение с фото, обновляем caption и клавиатуру
-        await ctx.editMessageCaption(
-          `${prod.title}\n\n${
-            prod.description || "Описание отсутствует"
-          }\n\nЦена: ${prod.price || "по запросу"}`,
-          { reply_markup: kb.reply_markup }
-        );
-      } else {
-        // Если текстовое сообщение, редактируем текст
-        await ctx.editMessageReplyMarkup(kb.reply_markup);
+  bot.action(
+    /^add_to_cart_(.+)_(.+)_(\d+)_(catalog|search)_(.+)$/,
+    async (ctx) => {
+      const productId = ctx.match[1];
+      const volume = ctx.match[2];
+      const page = Number(ctx.match[3]);
+      const source = ctx.match[4];
+      const categoryId = ctx.match[5] === "none" ? null : ctx.match[5];
+      const cart = getCart(userCarts, ctx.from.id);
+      const cartKey = `${productId}_${volume}`;
+      cart.set(cartKey, 1);
+      const prod = state.products.find(
+        (p) => String(p.id) === String(productId)
+      );
+      if (!prod) {
+        await ctx.answerCbQuery("Товар не найден", { show_alert: true });
+        return;
       }
-      await ctx.answerCbQuery("✅ Добавлено в корзину");
-    } catch {
-      await ctx.answerCbQuery("✅ Добавлено в корзину");
+      const kb = getProductKeyboard(
+        prod.id,
+        page,
+        cart,
+        source,
+        categoryId,
+        volume
+      );
+      // Обновляем только клавиатуру
+      try {
+        await ctx.editMessageReplyMarkup(kb.reply_markup);
+        await ctx.answerCbQuery("✅ Добавлено в корзину");
+      } catch {
+        await ctx.answerCbQuery("✅ Добавлено в корзину");
+      }
     }
-  });
+  );
 
-  bot.action(/^cart_inc_(.+)_(\d+)_(catalog|search)$/, async (ctx) => {
-    const productId = ctx.match[1];
-    const page = Number(ctx.match[2]);
-    const source = ctx.match[3];
-    const cart = getCart(userCarts, ctx.from.id);
-    const current = cart.get(productId) || 0;
-    cart.set(productId, current + 1);
-    const prod = state.products.find((p) => String(p.id) === String(productId));
-    if (!prod) {
-      await ctx.answerCbQuery("Товар не найден", { show_alert: true });
-      return;
+  bot.action(
+    /^cart_inc_(.+)_(.+)_(\d+)_(catalog|search)_(.+)$/,
+    async (ctx) => {
+      const productId = ctx.match[1];
+      const volume = ctx.match[2];
+      const page = Number(ctx.match[3]);
+      const source = ctx.match[4];
+      const categoryId = ctx.match[5] === "none" ? null : ctx.match[5];
+      const cart = getCart(userCarts, ctx.from.id);
+      const cartKey = `${productId}_${volume}`;
+      const current = cart.get(cartKey) || 0;
+      cart.set(cartKey, current + 1);
+      const prod = state.products.find(
+        (p) => String(p.id) === String(productId)
+      );
+      if (!prod) {
+        await ctx.answerCbQuery("Товар не найден", { show_alert: true });
+        return;
+      }
+      const kb = getProductKeyboard(
+        prod.id,
+        page,
+        cart,
+        source,
+        categoryId,
+        volume
+      );
+      try {
+        await ctx.editMessageReplyMarkup(kb.reply_markup);
+        await ctx.answerCbQuery();
+      } catch {
+        await ctx.answerCbQuery();
+      }
     }
-    const kb = getProductKeyboard(prod.id, page, cart, source);
-    // Обновляем только клавиатуру
-    try {
-      await ctx.editMessageReplyMarkup(kb.reply_markup);
-      await ctx.answerCbQuery();
-    } catch {
-      await ctx.answerCbQuery();
-    }
-  });
+  );
 
-  bot.action(/^cart_dec_(.+)_(\d+)_(catalog|search)$/, async (ctx) => {
-    const productId = ctx.match[1];
-    const page = Number(ctx.match[2]);
-    const source = ctx.match[3];
-    const cart = getCart(userCarts, ctx.from.id);
-    const current = cart.get(productId) || 0;
-    if (current > 1) {
-      cart.set(productId, current - 1);
-    } else {
-      cart.delete(productId);
+  bot.action(
+    /^cart_dec_(.+)_(.+)_(\d+)_(catalog|search)_(.+)$/,
+    async (ctx) => {
+      const productId = ctx.match[1];
+      const volume = ctx.match[2];
+      const page = Number(ctx.match[3]);
+      const source = ctx.match[4];
+      const categoryId = ctx.match[5] === "none" ? null : ctx.match[5];
+      const cart = getCart(userCarts, ctx.from.id);
+      const cartKey = `${productId}_${volume}`;
+      const current = cart.get(cartKey) || 0;
+      if (current > 1) {
+        cart.set(cartKey, current - 1);
+      } else {
+        cart.delete(cartKey);
+      }
+      const prod = state.products.find(
+        (p) => String(p.id) === String(productId)
+      );
+      if (!prod) {
+        await ctx.answerCbQuery("Товар не найден", { show_alert: true });
+        return;
+      }
+      const kb = getProductKeyboard(
+        prod.id,
+        page,
+        cart,
+        source,
+        categoryId,
+        volume
+      );
+      try {
+        await ctx.editMessageReplyMarkup(kb.reply_markup);
+        await ctx.answerCbQuery();
+      } catch {
+        await ctx.answerCbQuery();
+      }
     }
-    const prod = state.products.find((p) => String(p.id) === String(productId));
-    if (!prod) {
-      await ctx.answerCbQuery("Товар не найден", { show_alert: true });
-      return;
-    }
-    const kb = getProductKeyboard(prod.id, page, cart, source);
-    // Обновляем только клавиатуру
-    try {
-      await ctx.editMessageReplyMarkup(kb.reply_markup);
-      await ctx.answerCbQuery();
-    } catch {
-      await ctx.answerCbQuery();
-    }
-  });
+  );
 
-  bot.action(/^remove_from_cart_(.+)_(\d+)_(catalog|search)$/, async (ctx) => {
-    const productId = ctx.match[1];
-    const page = Number(ctx.match[2]);
-    const source = ctx.match[3];
-    const cart = getCart(userCarts, ctx.from.id);
-    cart.delete(productId);
-    const prod = state.products.find((p) => String(p.id) === String(productId));
-    if (!prod) {
-      await ctx.answerCbQuery("Товар не найден", { show_alert: true });
-      return;
+  bot.action(
+    /^remove_from_cart_(.+)_(.+)_(\d+)_(catalog|search)_(.+)$/,
+    async (ctx) => {
+      const productId = ctx.match[1];
+      const volume = ctx.match[2];
+      const page = Number(ctx.match[3]);
+      const source = ctx.match[4];
+      const categoryId = ctx.match[5] === "none" ? null : ctx.match[5];
+      const cart = getCart(userCarts, ctx.from.id);
+      const cartKey = `${productId}_${volume}`;
+      cart.delete(cartKey);
+      const prod = state.products.find(
+        (p) => String(p.id) === String(productId)
+      );
+      if (!prod) {
+        await ctx.answerCbQuery("Товар не найден", { show_alert: true });
+        return;
+      }
+      const kb = getProductKeyboard(
+        prod.id,
+        page,
+        cart,
+        source,
+        categoryId,
+        volume
+      );
+      try {
+        await ctx.editMessageReplyMarkup(kb.reply_markup);
+        await ctx.answerCbQuery("🗑 Удалено из корзины");
+      } catch {
+        await ctx.answerCbQuery("🗑 Удалено из корзины");
+      }
     }
-    const kb = getProductKeyboard(prod.id, page, cart, source);
-    // Обновляем только клавиатуру
-    try {
-      await ctx.editMessageReplyMarkup(kb.reply_markup);
-      await ctx.answerCbQuery("🗑 Удалено из корзины");
-    } catch {
-      await ctx.answerCbQuery("🗑 Удалено из корзины");
-    }
-  });
+  );
 
   bot.action("cart_noop", async (ctx) => {
     await ctx.answerCbQuery();
@@ -115,27 +161,33 @@ export function registerCartHandlers(bot, state, userCarts, ADMIN_ID) {
   });
 
   bot.action(/^edit_cart_item_(.+)$/, async (ctx) => {
-    const productId = ctx.match[1];
+    const cartKey = ctx.match[1];
+    const { productId, volume } = parseCartKey(cartKey);
     const cart = getCart(userCarts, ctx.from.id);
-    const quantity = cart.get(productId) || 0;
+    const quantity = cart.get(cartKey) || 0;
     const prod = state.products.find((p) => String(p.id) === String(productId));
     if (!prod) {
       await ctx.answerCbQuery("Товар не найден", { show_alert: true });
       return;
     }
+
+    // Получаем цену для конкретного объема
+    const priceObj = getPriceByVolume(prod, volume);
+    const priceText = priceObj ? priceObj.price : prod.price || "по запросу";
+
     const text = `${prod.title}\n\n${
       prod.description || "Описание отсутствует"
-    }\n\nЦена: ${prod.price || "по запросу"}\nВ корзине: ${quantity} шт.`;
+    }\n\nОбъем: ${volume}\nЦена: ${priceText}\nВ корзине: ${quantity} шт.`;
     const keyboard = [
       [
-        Markup.button.callback("-", `cart_edit_dec_${productId}`),
+        Markup.button.callback("-", `cart_edit_dec_${cartKey}`),
         Markup.button.callback(`${quantity}`, `cart_noop`),
-        Markup.button.callback("+", `cart_edit_inc_${productId}`),
+        Markup.button.callback("+", `cart_edit_inc_${cartKey}`),
       ],
       [
         Markup.button.callback(
           "🗑 Удалить из корзины",
-          `cart_edit_remove_${productId}`
+          `cart_edit_remove_${cartKey}`
         ),
       ],
       [Markup.button.callback("⬅️ Назад в корзину", "view_cart")],
@@ -152,29 +204,35 @@ export function registerCartHandlers(bot, state, userCarts, ADMIN_ID) {
   });
 
   bot.action(/^cart_edit_inc_(.+)$/, async (ctx) => {
-    const productId = ctx.match[1];
+    const cartKey = ctx.match[1];
+    const { productId, volume } = parseCartKey(cartKey);
     const cart = getCart(userCarts, ctx.from.id);
-    const current = cart.get(productId) || 0;
-    cart.set(productId, current + 1);
+    const current = cart.get(cartKey) || 0;
+    cart.set(cartKey, current + 1);
     const prod = state.products.find((p) => String(p.id) === String(productId));
     if (!prod) {
       await ctx.answerCbQuery("Товар не найден", { show_alert: true });
       return;
     }
-    const quantity = cart.get(productId);
+    const quantity = cart.get(cartKey);
+
+    // Получаем цену для конкретного объема
+    const priceObj = getPriceByVolume(prod, volume);
+    const priceText = priceObj ? priceObj.price : prod.price || "по запросу";
+
     const text = `${prod.title}\n\n${
       prod.description || "Описание отсутствует"
-    }\n\nЦена: ${prod.price || "по запросу"}\nВ корзине: ${quantity} шт.`;
+    }\n\nОбъем: ${volume}\nЦена: ${priceText}\nВ корзине: ${quantity} шт.`;
     const keyboard = [
       [
-        Markup.button.callback("-", `cart_edit_dec_${productId}`),
+        Markup.button.callback("-", `cart_edit_dec_${cartKey}`),
         Markup.button.callback(`${quantity}`, `cart_noop`),
-        Markup.button.callback("+", `cart_edit_inc_${productId}`),
+        Markup.button.callback("+", `cart_edit_inc_${cartKey}`),
       ],
       [
         Markup.button.callback(
           "🗑 Удалить из корзины",
-          `cart_edit_remove_${productId}`
+          `cart_edit_remove_${cartKey}`
         ),
       ],
       [Markup.button.callback("⬅️ Назад в корзину", "view_cart")],
@@ -190,13 +248,14 @@ export function registerCartHandlers(bot, state, userCarts, ADMIN_ID) {
   });
 
   bot.action(/^cart_edit_dec_(.+)$/, async (ctx) => {
-    const productId = ctx.match[1];
+    const cartKey = ctx.match[1];
+    const { productId, volume } = parseCartKey(cartKey);
     const cart = getCart(userCarts, ctx.from.id);
-    const current = cart.get(productId) || 0;
+    const current = cart.get(cartKey) || 0;
     if (current > 1) {
-      cart.set(productId, current - 1);
+      cart.set(cartKey, current - 1);
     } else {
-      cart.delete(productId);
+      cart.delete(cartKey);
       await ctx.answerCbQuery("🗑 Товар удален из корзины");
       setTimeout(() => {
         ctx.answerCbQuery = async () => {};
@@ -215,20 +274,25 @@ export function registerCartHandlers(bot, state, userCarts, ADMIN_ID) {
       await ctx.answerCbQuery("Товар не найден", { show_alert: true });
       return;
     }
-    const quantity = cart.get(productId);
+    const quantity = cart.get(cartKey);
+
+    // Получаем цену для конкретного объема
+    const priceObj = getPriceByVolume(prod, volume);
+    const priceText = priceObj ? priceObj.price : prod.price || "по запросу";
+
     const text = `${prod.title}\n\n${
       prod.description || "Описание отсутствует"
-    }\n\nЦена: ${prod.price || "по запросу"}\nВ корзине: ${quantity} шт.`;
+    }\n\nОбъем: ${volume}\nЦена: ${priceText}\nВ корзине: ${quantity} шт.`;
     const keyboard = [
       [
-        Markup.button.callback("-", `cart_edit_dec_${productId}`),
+        Markup.button.callback("-", `cart_edit_dec_${cartKey}`),
         Markup.button.callback(`${quantity}`, `cart_noop`),
-        Markup.button.callback("+", `cart_edit_inc_${productId}`),
+        Markup.button.callback("+", `cart_edit_inc_${cartKey}`),
       ],
       [
         Markup.button.callback(
           "🗑 Удалить из корзины",
-          `cart_edit_remove_${productId}`
+          `cart_edit_remove_${cartKey}`
         ),
       ],
       [Markup.button.callback("⬅️ Назад в корзину", "view_cart")],
@@ -244,9 +308,9 @@ export function registerCartHandlers(bot, state, userCarts, ADMIN_ID) {
   });
 
   bot.action(/^cart_edit_remove_(.+)$/, async (ctx) => {
-    const productId = ctx.match[1];
+    const cartKey = ctx.match[1];
     const cart = getCart(userCarts, ctx.from.id);
-    cart.delete(productId);
+    cart.delete(cartKey);
     await ctx.answerCbQuery("🗑 Товар удален из корзины");
     if (cart.size === 0) {
       try {
@@ -277,18 +341,30 @@ export function registerCartHandlers(bot, state, userCarts, ADMIN_ID) {
       await ctx.answerCbQuery("🛒 Корзина пуста", { show_alert: true });
       return;
     }
-    const userName =
-      `${ctx.from.first_name || ""}${
-        ctx.from.last_name ? " " + ctx.from.last_name : ""
-      }`.trim() || "—";
-    const username = ctx.from.username ? "@" + ctx.from.username : "—";
+
     let total = 0;
     let orderLines = [];
-    for (const [productId, quantity] of cart.entries()) {
+    let itemNumber = 1;
+
+    for (const [cartKey, quantity] of cart.entries()) {
+      // Парсим ключ корзины: productId_volume
+      const { productId, volume } = parseCartKey(cartKey);
       const prod = state.products.find(
         (p) => String(p.id) === String(productId)
       );
-      const priceRaw = prod?.price || "0";
+
+      if (!prod) continue;
+
+      // Получаем цену для конкретного объема
+      const priceObj = getPriceByVolume(prod, volume);
+      let priceRaw = "0";
+
+      if (priceObj) {
+        priceRaw = priceObj.price;
+      } else if (prod.price) {
+        priceRaw = prod.price;
+      }
+
       const priceNum =
         parseFloat(
           String(priceRaw)
@@ -297,42 +373,53 @@ export function registerCartHandlers(bot, state, userCarts, ADMIN_ID) {
         ) || 0;
       const itemTotal = priceNum * quantity;
       total += itemTotal;
-      orderLines.push(
-        `${prod?.title || productId} — ${quantity} шт. — ${
-          prod?.price || "0"
-        } — ${itemTotal.toFixed(2)}`
-      );
+
+      // Формат для WhatsApp (если количество > 1, показываем его)
+      if (quantity > 1) {
+        orderLines.push(
+          `${itemNumber}.⁠ ⁠${prod.title} — ${volume} — ${priceRaw} × ${quantity} шт.\n`
+        );
+      } else {
+        orderLines.push(
+          `${itemNumber}.⁠ ⁠${prod.title} — ${volume} — ${priceRaw}\n`
+        );
+      }
+      itemNumber++;
     }
-    const adminText = [
-      "📦 Новый заказ",
-      `Пользователь: ${userName}`,
-      `Username: ${username}`,
-      `ID: ${ctx.from.id}`,
+
+    // Формируем текст для WhatsApp
+    const whatsappText = [
+      "Привет!",
+      "Хотела бы проконсультироваться и оформить заказ Rooicell.",
       "",
-      "Содержимое:",
+      "Корзина:",
       ...orderLines,
       "",
-      `Итого: ${total.toFixed(2)}`,
-      `Время: ${new Date().toLocaleString()}`,
+      `Итого: ${total.toFixed(0)} ₸`,
     ].join("\n");
+    //Сюда вставить свой номер телефона
+    const telNumber = "123123";
+    const whatsappUrl = `https://wa.me/${telNumber}?text=${encodeURIComponent(
+      whatsappText
+    )}`;
+
+    // Очищаем корзину
+    cart.clear();
+
+    // Отправляем сообщение с кнопкой WhatsApp
+    const message = `✅ Ваш заказ готов!\n\nИтого: ${total.toFixed(
+      0
+    )} ₸\n\n👇 Нажмите кнопку ниже для оформления:`;
+
+    const keyboard = Markup.inlineKeyboard([
+      [Markup.button.url("💬 Открыть WhatsApp", whatsappUrl)],
+    ]);
+
     try {
-      if (ADMIN_ID) {
-        console.log(`📤 Отправка заказа администратору (ID: ${ADMIN_ID})`);
-        await bot.telegram.sendMessage(ADMIN_ID, adminText);
-        console.log("✅ Заказ успешно отправлен администратору");
-      } else {
-        console.warn("⚠️ ADMIN_ID не установлен, уведомление не отправлено");
-      }
-      await ctx.answerCbQuery("✅ Заказ отправлен");
-      cart.clear();
-      try {
-        await ctx.reply(
-          "✅ Заказ оформлен. Мы свяжемся с вами в ближайшее время.",
-          buildMainKeyboard()
-        );
-      } catch {}
+      await ctx.reply(message, keyboard);
+      await ctx.answerCbQuery();
     } catch (e) {
-      console.error("❌ Ошибка при отправке заказа администратору:", e);
+      console.error("Ошибка при отправке ссылки WhatsApp:", e);
       await ctx.answerCbQuery("Ошибка при оформлении заказа", {
         show_alert: true,
       });

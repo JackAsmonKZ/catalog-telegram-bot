@@ -1,7 +1,9 @@
 import { Markup } from "telegraf";
-import { buildCatalogKeyboard } from "./keyboards.js";
-import { getProductKeyboard } from "./keyboards.js";
-import { getCart, sendProductWithPhoto } from "./utils.js";
+import {
+  buildCategoriesKeyboard,
+  buildVolumeSelectionKeyboard,
+} from "./keyboards.js";
+import { sendProductWithPhoto } from "./utils.js";
 
 export function registerSearchHandlers(
   bot,
@@ -33,13 +35,17 @@ export function registerSearchHandlers(
   bot.action("cancel_search", async (ctx) => {
     searchState.delete(ctx.from.id);
     try {
-      await ctx.editMessageText("Каталог товаров:", {
-        reply_markup: buildCatalogKeyboard(state.products, 1).reply_markup,
+      await ctx.editMessageText("Выберите категорию:", {
+        reply_markup: buildCategoriesKeyboard(
+          state.categories,
+          state.products,
+          1
+        ).reply_markup,
       });
     } catch {
       await ctx.reply(
-        "Каталог товаров:",
-        buildCatalogKeyboard(state.products, 1)
+        "Выберите категорию:",
+        buildCategoriesKeyboard(state.categories, state.products, 1)
       );
     }
     await ctx.answerCbQuery();
@@ -52,8 +58,8 @@ export function registerSearchHandlers(
       await ctx.answerCbQuery("Товар не найден", { show_alert: true });
       return;
     }
-    const cart = getCart(userCarts, ctx.from.id);
-    const kb = getProductKeyboard(prod.id, 1, cart, "search");
+    // Показываем товар с выбором объема
+    const kb = buildVolumeSelectionKeyboard(prod, 1, "search");
     await sendProductWithPhoto(ctx, prod, kb, true);
     await ctx.answerCbQuery();
   });
@@ -69,16 +75,27 @@ export function registerSearchHandlers(
     }
     const { results, query } = savedSearch;
     const text = `Найдено товаров: ${results.length}\n\nВыберите товар:`;
-    const keyboard = results.map((prod) => [
-      Markup.button.callback(
-        `${prod.title} — ${prod.price || ""}`,
-        `search_product_${prod.id}`
-      ),
-    ]);
+    const keyboard = results.map((prod) => {
+      let priceText = "";
+      if (prod.prices && Array.isArray(prod.prices) && prod.prices.length > 0) {
+        if (prod.prices.length === 1) {
+          priceText = prod.prices[0].price;
+        } else {
+          priceText = `от ${prod.prices[0].price}`;
+        }
+      } else if (prod.price) {
+        priceText = prod.price;
+      }
+      return [
+        Markup.button.callback(
+          `${prod.title}${priceText ? ` — ${priceText}` : ""}`,
+          `search_product_${prod.id}`
+        ),
+      ];
+    });
     keyboard.push([
-      Markup.button.callback("⬅️ Вернуться в каталог", "catalog_back_1"),
+      Markup.button.callback("⬅️ Назад к категориям", "show_categories"),
     ]);
-    keyboard.push([Markup.button.callback("🔍 Новый поиск", "search")]);
     // Всегда создаем новое сообщение для сохранения истории
     await ctx.reply(text, Markup.inlineKeyboard(keyboard));
     await ctx.answerCbQuery();
